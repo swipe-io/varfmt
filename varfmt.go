@@ -8,10 +8,10 @@ import (
 // https://github.com/ChimeraCoder/gojson
 // This code almost entirely borrowed from the code above
 
-// commonInitialisms is a set of common initialisms.
-// Only add entries that are highly unlikely to be non-initialisms.
+// commonInitialism is a set of common initialism.
+// Only add entries that are highly unlikely to be non-initialism.
 // For instance, "ID" is fine (Freudian code is rare), but "AND" is not.
-var commonInitialisms = map[string]bool{
+var commonInitialism = map[string]bool{
 	"API":   true,
 	"ASCII": true,
 	"CPU":   true,
@@ -45,9 +45,9 @@ var commonInitialisms = map[string]bool{
 	"XML":   true,
 }
 
-// PublicVarName formats a string as a public go variable name
-func PublicVarName(s string) string {
-	name := lintFieldName(s)
+// ExportVarName formats a string as a public go variable name
+func ExportVarName(s string) string {
+	name := lintFieldName(s, false)
 	runes := []rune(name)
 	for i, c := range runes {
 		ok := unicode.IsLetter(c) || unicode.IsDigit(c)
@@ -61,16 +61,30 @@ func PublicVarName(s string) string {
 	return string(runes)
 }
 
-func lintFieldName(name string) string {
+// UnExportVarName formats a string as a public go variable name
+func UnExportVarName(s string) string {
+	name := lintFieldName(s, true)
+	runes := []rune(name)
+	for i, c := range runes {
+		ok := unicode.IsLetter(c) || unicode.IsDigit(c)
+		if i == 0 {
+			ok = unicode.IsLetter(c)
+		}
+		if !ok {
+			runes[i] = '_'
+		}
+	}
+	return string(runes)
+}
+
+func lintFieldName(name string, toLower bool) string {
 	// Fast path for simple cases: "_" and all lowercase.
 	if name == "_" {
 		return name
 	}
-
 	for len(name) > 0 && name[0] == '_' {
 		name = name[1:]
 	}
-
 	allLower := true
 	for _, r := range name {
 		if !unicode.IsLower(r) {
@@ -80,10 +94,14 @@ func lintFieldName(name string) string {
 	}
 	if allLower {
 		runes := []rune(name)
-		if u := strings.ToUpper(name); commonInitialisms[u] {
+		if u := strings.ToUpper(name); commonInitialism[u] {
 			copy(runes[0:], []rune(u))
 		} else {
-			runes[0] = unicode.ToUpper(runes[0])
+			if toLower {
+				runes[0] = unicode.ToLower(runes[0])
+			} else {
+				runes[0] = unicode.ToUpper(runes[0])
+			}
 		}
 		return string(runes)
 	}
@@ -94,7 +112,6 @@ func lintFieldName(name string) string {
 	w, i := 0, 0 // index of start of word, scan
 	for i+1 <= len(runes) {
 		eow := false // whether we hit the end of a word
-
 		if i+1 == len(runes) {
 			eow = true
 		} else if runes[i+1] == '_' {
@@ -104,12 +121,10 @@ func lintFieldName(name string) string {
 			for i+n+1 < len(runes) && runes[i+n+1] == '_' {
 				n++
 			}
-
 			// Leave at most one underscore if the underscore is between two digits
 			if i+n+1 < len(runes) && unicode.IsDigit(runes[i]) && unicode.IsDigit(runes[i+n+1]) {
 				n--
 			}
-
 			copy(runes[i+1:], runes[i+n+1:])
 			runes = runes[:len(runes)-n]
 		} else if unicode.IsLower(runes[i]) && !unicode.IsLower(runes[i+1]) {
@@ -120,17 +135,22 @@ func lintFieldName(name string) string {
 		if !eow {
 			continue
 		}
-
 		// [w,i) is a word.
 		word := string(runes[w:i])
-		if u := strings.ToUpper(word); commonInitialisms[u] {
-			// All the common initialisms are ASCII,
+		if u := strings.ToUpper(word); commonInitialism[u] {
+			// All the common initialism are ASCII,
 			// so we can replace the bytes exactly.
+			if toLower && w == 0 {
+				u = strings.ToLower(u)
+			}
 			copy(runes[w:], []rune(u))
-
 		} else if strings.ToLower(word) == word {
 			// already all lowercase, and not the first word, so uppercase the first character.
-			runes[w] = unicode.ToUpper(runes[w])
+			if toLower && w == 0 {
+				runes[w] = unicode.ToLower(runes[w])
+			} else {
+				runes[w] = unicode.ToUpper(runes[w])
+			}
 		}
 		w = i
 	}
